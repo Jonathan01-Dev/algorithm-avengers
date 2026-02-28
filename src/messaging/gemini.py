@@ -1,96 +1,70 @@
 import os
-import requests
-import json
-import base64
+from google import genai
+from google.genai import types
 
 
 class GeminiAssistant:
     def __init__(self, api_key=None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        # Using the requested model
-        self.model = "gemini-2.5-flash-lite"  # gemini-3-flash-preview isn't out yet, using 2.0 Flash as equivalent high-speed/latest
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        # Utilisation du dernier modèle stable disponible
+        self.model_id = "gemini-3-flash-preview"
         self.enabled = self.api_key is not None
-        self.history = []
+
+        if self.enabled:
+            self.client = genai.Client(api_key=self.api_key)
+            # On initialise une session de chat pour gérer l'historique automatiquement
+            self.chat = self.client.chats.create(model=self.model_id)
+        else:
+            self.client = None
+            self.chat = None
 
     def query(self, user_query, file_path=None):
         if not self.enabled:
             return "Gemini is disabled. Set GEMINI_API_KEY to enable."
 
-        contents = []
+        content_parts = [user_query]
 
-        # Build history context
-        for entry in self.history:
-            contents.append(
-                {
-                    "role": "user" if entry["role"] == "user" else "model",
-                    "parts": [{"text": entry["text"]}],
-                }
-            )
-
-        current_parts = []
-
-        # If a file is provided, read it and add it as a part
+        # Gestion des fichiers
         if file_path and os.path.exists(file_path):
             try:
                 with open(file_path, "rb") as f:
                     file_data = f.read()
 
-                # Determine mime type simple way
+                # Détection simple du type MIME (ou vous pouvez utiliser le module mimetypes)
                 mime_type = "text/plain"
                 if file_path.endswith(".pdf"):
                     mime_type = "application/pdf"
-                elif file_path.endswith(".png"):
-                    mime_type = "image/png"
-                elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
-                    mime_type = "image/jpeg"
+                elif file_path.lower().endswith((".png", ".jpg", ".jpeg")):
+                    mime_type = (
+                        "image/jpeg"  # Le SDK gère très bien le JPEG pour les images
+                    )
 
-                current_parts.append(
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": base64.b64encode(file_data).decode("utf-8"),
-                        }
-                    }
+                # Ajout de la partie multimédia
+                content_parts.append(
+                    types.Part.from_bytes(data=file_data, mime_type=mime_type)
                 )
             except Exception as e:
                 return f"Error reading file for IA: {e}"
 
-        current_parts.append({"text": user_query})
-        contents.append({"role": "user", "parts": current_parts})
-
-        payload = {
-            "contents": contents,
-            # "generationConfig": {
-            # "temperature": 0.7,
-            # "topK": 40,
-            # "topP": 0.95,
-            # "maxOutputTokens": 2048,
-            # },
-        }
-
         try:
-            response = requests.post(
-                f"{self.url}",
-                headers={
-                    "x-goog-api-key": self.api_key,
-                    "Content-Type": "application/json",
-                },
-                json=payload,
+            # Envoi de la requête via la session de chat (maintient l'historique)
+            response = self.chat.send_message(
+                message=content_parts,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    top_k=40,
+                    top_p=0.95,
+                    max_output_tokens=2048,
+                ),
             )
-            response.raise_for_status()
-            data = response.json()
 
-            if "candidates" in data and data["candidates"]:
-                answer = data["candidates"][0]["content"]["parts"][0]["text"]
-                # Update history
-                self.history.append({"role": "user", "text": user_query})
-                self.history.append({"role": "model", "text": answer})
-                # Keep history reasonable (last 10 exchanges)
-                if len(self.history) > 20:
-                    self.history = self.history[-20:]
-                return answer
-            else:
-                return f"Gemini returned an empty response: {data}"
+            # Pas besoin de gérer manuellement self.history, le SDK s'en occupe
+            return response.text
+
         except Exception as e:
             return f"Error querying Gemini: {e}"
+
+    def clear_history(self):
+        """Réinitialise la conversation si nécessaire."""
+        if self.enabled:
+            self.chat = self.client.chats.create(model=self.model_id)
