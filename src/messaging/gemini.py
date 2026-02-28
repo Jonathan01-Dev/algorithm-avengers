@@ -70,7 +70,14 @@ class GeminiAssistant:
         }
 
         try:
-            response = requests.post(f"{self.url}?key={self.api_key}", json=payload)
+            response = requests.post(
+                f"{self.url}",
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
             response.raise_for_status()
             data = response.json()
 
