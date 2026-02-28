@@ -8,7 +8,7 @@ class GeminiAssistant:
     def __init__(self, api_key=None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         # Using the requested model
-        self.model = "gemini-3-flash-preview"  # gemini-3-flash-preview isn't out yet, using 2.0 Flash as equivalent high-speed/latest
+        self.model = "gemini-2.5-flash-lite"  # gemini-3-flash-preview isn't out yet, using 2.0 Flash as equivalent high-speed/latest
         self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         self.enabled = self.api_key is not None
         self.history = []
