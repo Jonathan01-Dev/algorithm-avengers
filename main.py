@@ -20,31 +20,47 @@ import socket
 
 # Force flush for all prints
 import builtins
+
+
 def print(*args, **kwargs):
-    kwargs['flush'] = True
+    kwargs["flush"] = True
     builtins.print(*args, **kwargs)
 
-def cli_loop(node_name, node_id, peer_table, messaging_manager, transfer_manager, gemini, message_log, no_ai=False):
+
+def cli_loop(
+    node_name,
+    node_id,
+    peer_table,
+    messaging_manager,
+    transfer_manager,
+    gemini,
+    message_log,
+    no_ai=False,
+):
     print(f"--- Node {node_name} is running ---")
     commands_help = "Commands: list, msg <peer_id> <text>, add <ip> <port> <node_id>, share <file_path>, download <manifest_json_path>, status, exit"
     if not no_ai:
         commands_help += ", ia <question>, ia_file <file_path> <question>"
     print(commands_help)
-    
+
     while True:
         try:
             line = sys.stdin.readline()
-            if not line: break
+            if not line:
+                break
             line = line.strip()
-            if not line: continue
-            
+            if not line:
+                continue
+
             cmd = line.split(maxsplit=2)
-            if not cmd: continue
-            
+            if not cmd:
+                continue
+
             action = cmd[0].lower()
             if action == "add":
                 parts = line.split()
-                if len(parts) < 4: continue
+                if len(parts) < 4:
+                    continue
                 peer_table.upsert(parts[3], parts[1], int(parts[2]))
                 print(f"Peer {parts[3][:8]} added manually.")
             elif action == "list":
@@ -52,15 +68,19 @@ def cli_loop(node_name, node_id, peer_table, messaging_manager, transfer_manager
                 for pid, pdata in peers.items():
                     print(f" - {pid[:8]}: {pdata['ip']}:{pdata['tcp_port']}")
             elif action == "msg":
-                if len(cmd) < 3: 
+                if len(cmd) < 3:
                     print("Usage: msg <peer_id> <text>")
                     continue
                 peer_prefix, text = cmd[1], cmd[2]
                 peers = peer_table.get_peers()
-                target_pid = next((pid for pid in peers if pid.startswith(peer_prefix)), None)
+                target_pid = next(
+                    (pid for pid in peers if pid.startswith(peer_prefix)), None
+                )
                 if target_pid:
                     pdata = peers[target_pid]
-                    if messaging_manager.send_encrypted_msg(target_pid, pdata["ip"], pdata["tcp_port"], text):
+                    if messaging_manager.send_encrypted_msg(
+                        target_pid, pdata["ip"], pdata["tcp_port"], text
+                    ):
                         message_log.append(f"ME -> {target_pid[:8]}: {text}")
                 else:
                     print("Peer not found.")
@@ -95,34 +115,51 @@ def cli_loop(node_name, node_id, peer_table, messaging_manager, transfer_manager
                     print("Gemini assistant not initialized. Check API Key.")
             elif action == "share":
                 parts = line.split()
-                if len(parts) < 2: continue
+                if len(parts) < 2:
+                    continue
                 file_path = parts[1]
                 if os.path.exists(file_path):
                     manifest = create_file_manifest(file_path, node_id.hex())
                     transfer_manager.register_file(file_path, manifest["file_id"])
-                    m_path = f"{node_name}_manifest_{manifest['file_id'][:8]}.json"
-                    with open(m_path, "w") as f: json.dump(manifest, f)
-                    print(f"Manifest created: {m_path}")
+                    os.makedirs("manifests", exist_ok=True)
+                    base = os.path.splitext(os.path.basename(file_path))[0]
+                    m_path = f"manifests/{base}_{manifest['file_id'][:8]}.json"
+                    with open(m_path, "w") as f:
+                        json.dump(manifest, f)
+                    print(
+                        f'"{os.path.basename(file_path)}" partagé ({manifest["nb_chunks"]})'
+                    )
+                    print(f"Manifest created: {os.path.abspath(m_path)}")
                     peers = peer_table.get_peers()
-                    packet = Packet(TYPE_MANIFEST, node_id, json.dumps(manifest).encode())
+                    packet = Packet(
+                        TYPE_MANIFEST, node_id, json.dumps(manifest).encode()
+                    )
                     for pid, pdata in peers.items():
                         try:
-                            with socket.create_connection((pdata["ip"], pdata["tcp_port"]), timeout=2) as s:
+                            with socket.create_connection(
+                                (pdata["ip"], pdata["tcp_port"]), timeout=2
+                            ) as s:
                                 s.sendall(packet.encode())
-                        except: pass
+                        except:
+                            pass
             elif action == "download":
                 parts = line.split()
-                if len(parts) < 2: continue
+                if len(parts) < 2:
+                    continue
                 m_path = parts[1]
                 if os.path.exists(m_path):
-                    with open(m_path, "r") as f: manifest = json.load(f)
+                    with open(m_path, "r") as f:
+                        manifest = json.load(f)
                     transfer_manager.download_file(manifest, peer_table.get_peers())
             elif action == "status":
-                print(f"Node: {node_name} | ID: {node_id.hex()[:16]}... | Peers: {len(peer_table.get_peers())}")
+                print(
+                    f"Node: {node_name} | ID: {node_id.hex()[:16]}... | Peers: {len(peer_table.get_peers())}"
+                )
             elif action == "exit":
                 os._exit(0)
         except Exception as e:
             print(f"CLI Error: {e}")
+
 
 def main():
     load_dotenv()
@@ -136,8 +173,10 @@ def main():
 
     # Keys
     key_path = f"{args.name}_signing.key"
-    if not os.path.exists(key_path): generate_and_save_keys(args.name)
-    with open(key_path, "rb") as f: signing_key = SigningKey(f.read())
+    if not os.path.exists(key_path):
+        generate_and_save_keys(args.name)
+    with open(key_path, "rb") as f:
+        signing_key = SigningKey(f.read())
     node_id = signing_key.verify_key.encode()
     print(f"Node ID: {node_id.hex()}", flush=True)
 
@@ -146,7 +185,7 @@ def main():
     trust_table = TrustTable(f"{args.name}_trust.json")
     messaging_manager = MessagingManager(node_id, signing_key, trust_table)
     transfer_manager = TransferManager(node_id, signing_key, messaging_manager)
-    
+
     gemini = None
     if not args.no_ai:
         gemini = GeminiAssistant()
@@ -157,25 +196,43 @@ def main():
     web_queue = None
     if args.web:
         from src.web.app import node_data, run_flask
-        web_queue = node_data['new_messages']
-        node_data['peer_table'] = peer_table
-        node_data['transfer_manager'] = transfer_manager
-        node_data['messaging_manager'] = messaging_manager
-        node_data['gemini_assistant'] = gemini
-        node_data['node_id'] = node_id
+
+        web_queue = node_data["new_messages"]
+        node_data["peer_table"] = peer_table
+        node_data["transfer_manager"] = transfer_manager
+        node_data["messaging_manager"] = messaging_manager
+        node_data["gemini_assistant"] = gemini
+        node_data["node_id"] = node_id
         threading.Thread(target=run_flask, args=(args.web_port,), daemon=True).start()
         print(f"Web interface enabled on http://localhost:{args.web_port}")
 
-    server = TCPServer(node_id, args.port, peer_table, messaging_manager, transfer_manager, web_queue=web_queue)
+    server = TCPServer(
+        node_id,
+        args.port,
+        peer_table,
+        messaging_manager,
+        transfer_manager,
+        web_queue=web_queue,
+    )
     discovery = Discovery(node_id, args.port, peer_table)
-    
+
     message_log = []
 
     server.start()
     discovery.start()
-    
+
     # Run CLI in main thread
-    cli_loop(args.name, node_id, peer_table, messaging_manager, transfer_manager, gemini, message_log, no_ai=args.no_ai)
+    cli_loop(
+        args.name,
+        node_id,
+        peer_table,
+        messaging_manager,
+        transfer_manager,
+        gemini,
+        message_log,
+        no_ai=args.no_ai,
+    )
+
 
 if __name__ == "__main__":
     main()
