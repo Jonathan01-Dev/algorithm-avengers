@@ -112,22 +112,22 @@
 <!-- ── RIGHT : Files ── -->
 <section class="right">
 
-    <h3>📂 My Shared Files</h3>
+    <h3>My Shared Files</h3>
     <div id="my-files"><div class="b sys">No files shared yet.</div></div>
 
-    <h3>📥 Available to Download</h3>
+    <h3>Available to Download</h3>
     <div id="avail-files"><div class="b sys">No manifests found.</div></div>
 
     <h3>Share a File</h3>
     <div class="form-col">
         <input id="share-path" placeholder="C:\path\to\file.txt">
-        <button onclick="shareFile()">📤 Share</button>
+        <button onclick="shareFile()">Share</button>
     </div>
 
     <h3>Download (manual)</h3>
     <div class="form-col">
         <input id="dl-path" placeholder="manifests/file_abc123.json">
-        <button class="g" onclick="dlManual()">📥 Download</button>
+        <button class="g" onclick="dlManual()">Download</button>
     </div>
 
 </section>
@@ -214,7 +214,7 @@ async function shareFile() {
         const d = await post('/api/share', {path});
         if (d.error) { sysmsg(`✗ ${d.error}`); return; }
         sysmsg(`✓ "${d.filename}" partagé (${d.nb_chunks} chunks, ${fmtSize(d.size)}) → ${d.broadcast_to} pair(s)`);
-        sysmsg(`📋 Manifest sauvegardé : ${d.manifest_path}`);
+        sysmsg(`Manifest sauvegardé : ${d.manifest_path}`);
         document.getElementById('share-path').value = '';
         await refreshFiles();  // mise à jour immédiate
     } catch(e) { sysmsg(`✗ ${e}`); }
